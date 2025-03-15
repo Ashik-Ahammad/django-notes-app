@@ -1,0 +1,82 @@
+name: Django CI Pipeline
+
+on:
+  push:
+    branches:
+      - "feature/*"
+
+jobs:
+  linter:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8
+
+      - name: Run Linter
+        run: flake8 .
+
+  code_quality:
+    runs-on: ubuntu-latest
+    needs: linter
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pylint django
+
+      - name: Run Code Quality Check
+        run: pylint $(git ls-files '*.py')
+
+  unit_tests:
+    runs-on: ubuntu-latest
+    needs: code_quality
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.9"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python manage.py makemigrations
+          python manage.py migrate
+
+      - name: Run Unit Tests
+        run: python manage.py test
+
+  merge_to_dev:
+    runs-on: ubuntu-latest
+    needs: unit_tests
+    if: success()
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Merge Feature Branch into Dev
+        run: |
+          git config --global user.name "Ashik-Ahammad"
+          git config --global user.email "ashik19ahammad@gmail.com"
+          git fetch origin
+          git checkout dev
+          git merge --no-ff ${{ github.ref }} -m "Auto-merged by CI"
+          git push origin dev
